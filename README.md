@@ -1,6 +1,6 @@
 # AutoClicker
 
-**v2.3.0 "Atlas"** — a retro Windows 95/98-style automation console for Windows and Linux.
+**v2.4.0 "Nebula"** — a retro Windows 95/98-style automation console for Windows and Linux.
 Auto clicks, auto keys, macro recording, image-targeted clicking, Discord Rich Presence,
 a Steam storefront explorer and GitHub-powered updates.
 
@@ -38,7 +38,7 @@ a Steam storefront explorer and GitHub-powered updates.
 
 ### Windows
 
-Download `AutoClicker-Setup-2.3.0.exe` from the
+Download `AutoClicker-Setup-2.4.0.exe` from the
 [Releases page](https://github.com/daxiKing/AutoClicker/releases/latest) and run it.
 The installer places the app under `%LOCALAPPDATA%\Programs\AutoClicker`, creates a
 desktop shortcut and keeps settings, macros and images in the portable `data\` folder
@@ -49,7 +49,7 @@ next to the executable.
 Download the Linux tarball from Releases, then:
 
 ```bash
-tar -xzf AutoClicker-2.3.0-linux-x86_64.tar.gz
+tar -xzf AutoClicker-2.4.0-linux-x86_64.tar.gz
 ./AutoClicker/AutoClicker
 ```
 
@@ -86,7 +86,7 @@ python -m PyInstaller --noconfirm --clean --windowed --name AutoClicker `
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" build\AutoClicker.iss
 ```
 
-The installer is written to `build\installer\AutoClicker-Setup-2.3.0.exe`.
+The installer is written to `build\installer\AutoClicker-Setup-2.4.0.exe`.
 
 ### Linux bundle
 
@@ -95,7 +95,7 @@ bash build/build_linux.sh
 ```
 
 The portable folder lands in `build/dist-linux/AutoClicker` and the tarball in
-`build/AutoClicker-2.3.0-linux-x86_64.tar.gz`.
+`build/AutoClicker-2.4.0-linux-x86_64.tar.gz`.
 
 The GitHub Actions workflow in `.github/workflows/build.yml` builds both platforms on
 every push to `main` and on pull requests. Pushing a `v*` tag also publishes the Windows

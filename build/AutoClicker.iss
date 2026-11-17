@@ -1,6 +1,6 @@
 ﻿; AutoClicker installer - Inno Setup 6
 #define MyAppName "AutoClicker"
-#define MyAppVersion "2.3.0"
+#define MyAppVersion "2.4.0"
 #define MyAppPublisher "AutoClicker"
 #define MyAppExeName "AutoClicker.exe"
 
@@ -25,7 +25,7 @@ SolidCompression=yes
 WizardStyle=modern
 MinVersion=10.0
 AppMutex=AutoClicker.Singleton.1
-VersionInfoVersion=2.3.0.0
+VersionInfoVersion=2.4.0.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=AutoClicker installer
 VersionInfoProductName={#MyAppName}
@@ -55,5 +55,6 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 
 ; User macros, settings and logs live under {app}\data. Inno only removes the
 ; files it installed, so the vault survives an uninstall for later reinstalls.
+
 
 

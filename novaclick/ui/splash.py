@@ -82,7 +82,7 @@ class BootConsole(QWidget):
     """Black terminal pane that prints the boot sequence line by line."""
 
     LINES = (
-        "AutoClicker BIOS v2.3  ·  native input core",
+        "AutoClicker BIOS v2.4  ·  native input core",
         "Loading SendInput engine ............ OK",
         "Mounting macro vault ................ OK",
         "Calibrating click pipeline .......... OK",

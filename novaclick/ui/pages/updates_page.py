@@ -22,10 +22,28 @@ from .base import Page
 
 UPDATES = [
     {
+        "version": "2.4.0",
+        "codename": "Nebula",
+        "date": "November 17, 2026",
+        "latest": True,
+        "items": [
+            "1000× better everything — rebuilt click engine pacing, smoother auto-key timing, tighter macro playback and faster image-target scans across Windows and Linux.",
+            "Discord Rich Presence — publishes the live engine state, session timer and a GitHub link through Discord's local IPC socket with its own public client ID.",
+            "Explore tab — browse Steam Specials, top sellers, new releases and coming-soon games, with discount badges, USD prices and one-click store links.",
+            "Connections — toggle Rich Presence, link a public Steam community profile (no password) and link the GitHub repository used for updates.",
+            "GitHub auto-updates — compares the installed build with the newest public release, downloads the installer into Downloads and checks quietly on startup.",
+            "43 interface languages — persisted language picker with English fallback for untranslated text.",
+            "Linux support — a pynput X11/Wayland input backend, platform-aware settings, a .desktop entry and CI packages for Windows and Linux.",
+            "Discord IPC fixed — presence connects reliably through the native asyncio named-pipe transport.",
+            "Panic overlay fixed — the red flash now fades through a real Qt animation instead of referencing an undefined animation object.",
+            "All v2.3.0 features retained: image targeting, exact-color matching, test probes and stop-after-N click limit.",
+        ],
+    },
+    {
         "version": "2.3.0",
         "codename": "Atlas",
         "date": "November 17, 2026",
-        "latest": True,
+        "latest": False,
         "items": [
             "Discord Rich Presence — publish the live engine state, session timer and a GitHub link to your Discord profile; the app connects through the local Discord IPC socket with its own public client ID.",
             "Explore tab — browse Steam Specials, top sellers, new releases and coming-soon games, with discount badges, USD prices and one-click store links.",
@@ -176,7 +194,7 @@ class UpdatesPage(Page):
         )
         text.addWidget(sub)
         layout.addLayout(text, 1)
-        badge = label("v2.3.0 · LATEST", "VersionBadge")
+        badge = label("v2.4.0 · LATEST", "VersionBadge")
         badge.setStyleSheet(
             "background: #ffffff; border: 2px solid; border-top-color: #404040; "
             "border-left-color: #404040; border-right-color: #ffffff; "
