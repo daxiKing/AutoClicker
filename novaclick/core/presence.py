@@ -11,6 +11,7 @@ read, stored or transmitted by this module.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import queue
@@ -63,7 +64,7 @@ def decode_header(header: bytes) -> tuple[int, int]:
 def pipe_candidates() -> list[str]:
     """Return likely Discord IPC endpoints for the current platform."""
     if sys.platform.startswith("win"):
-        return [rf"\\.\pipe\discord-ipc-{index}" for index in range(10)]
+        return [rf"\\?\pipe\discord-ipc-{index}" for index in range(10)]
 
     bases: list[Path] = []
     for raw in (
@@ -102,22 +103,46 @@ def pipe_candidates() -> list[str]:
     return endpoints
 
 
-def _open_endpoint(path: str):
-    return open(path, "r+b", buffering=0)
+def _loop_main(loop: asyncio.AbstractEventLoop) -> None:
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_forever()
+    finally:
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        loop.close()
+
+
+async def _open_stream(path: str, loop: asyncio.AbstractEventLoop):
+    """Open one Discord IPC endpoint with the native asyncio transport."""
+    if sys.platform.startswith("win"):
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        transport, _ = await loop.create_pipe_connection(lambda: protocol, path)
+        writer = asyncio.StreamWriter(transport, protocol, reader, loop)
+        return reader, writer
+    return await asyncio.open_unix_connection(path)
 
 
 class _IPC:
-    """A single IPC connection with a background reader thread."""
+    """A single IPC connection with a background asyncio reader task."""
 
-    def __init__(self, handle) -> None:
-        self.handle = handle
+    def __init__(self, reader, writer, loop, thread: threading.Thread) -> None:
+        self._reader = reader
+        self._writer = writer
+        self._loop = loop
+        self._thread = thread
         self._frames: queue.Queue[tuple[int, dict[str, Any]]] = queue.Queue()
         self._write_lock = threading.Lock()
         self._closed = threading.Event()
-        self._reader = threading.Thread(
-            target=self._read_loop, name="discord-ipc-reader", daemon=True
-        )
-        self._reader.start()
+        self._read_task: asyncio.Task | None = None
+        loop.call_soon_threadsafe(self._start_reader)
+
+    def _start_reader(self) -> None:
+        self._read_task = self._loop.create_task(self._read_loop())
 
     @property
     def closed(self) -> bool:
@@ -127,30 +152,25 @@ class _IPC:
         if self.closed:
             return False
         data = encode_frame(opcode, payload)
+
+        async def _write() -> None:
+            self._writer.write(data)
+            await self._writer.drain()
+
         try:
             with self._write_lock:
-                self.handle.write(data)
-                self.handle.flush()
+                asyncio.run_coroutine_threadsafe(_write(), self._loop).result(3.0)
             return True
         except Exception:
             self._closed.set()
             return False
 
-    def _read_exact(self, size: int) -> bytes:
-        chunks = bytearray()
-        while len(chunks) < size:
-            chunk = self.handle.read(size - len(chunks))
-            if not chunk:
-                raise PresenceError("Discord closed the IPC connection")
-            chunks.extend(chunk)
-        return bytes(chunks)
-
-    def _read_loop(self) -> None:
+    async def _read_loop(self) -> None:
         try:
             while not self._closed.is_set():
-                header = self._read_exact(8)
+                header = await self._reader.readexactly(8)
                 opcode, length = decode_header(header)
-                body = self._read_exact(length) if length else b"{}"
+                body = await self._reader.readexactly(length) if length else b"{}"
                 try:
                     payload = json.loads(body.decode("utf-8"))
                 except Exception:
@@ -173,10 +193,27 @@ class _IPC:
         if self._closed.is_set():
             return
         self._closed.set()
+
+        async def _close() -> None:
+            try:
+                self._writer.close()
+                await self._writer.wait_closed()
+            except Exception:
+                pass
+
         try:
-            self.handle.close()
+            asyncio.run_coroutine_threadsafe(_close(), self._loop).result(2.0)
         except Exception:
             pass
+
+    def shutdown(self) -> None:
+        self.close()
+        try:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        except RuntimeError:
+            pass
+        if self._thread.is_alive():
+            self._thread.join(timeout=2.0)
 
 
 def _truncate(text: str, limit: int = 128) -> str:
@@ -257,17 +294,30 @@ def _handshake(
 def connect(client_id: str = DISCORD_CLIENT_ID) -> tuple[_IPC | None, str, str]:
     """Open and handshake the first usable Discord IPC endpoint."""
     errors: list[str] = []
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(
+        target=_loop_main, args=(loop,), name="discord-ipc-loop", daemon=True
+    )
+    thread.start()
     for candidate in pipe_candidates():
         try:
-            handle = _open_endpoint(candidate)
-        except OSError:
+            reader, writer = asyncio.run_coroutine_threadsafe(
+                _open_stream(candidate, loop), loop
+            ).result(3.0)
+        except Exception:
             continue
-        ipc = _IPC(handle)
+        ipc = _IPC(reader, writer, loop, thread)
         ok, username, error = _handshake(ipc, client_id)
         if ok:
             return ipc, username, ""
         errors.append(error)
         ipc.close()
+    try:
+        loop.call_soon_threadsafe(loop.stop)
+    except RuntimeError:
+        pass
+    if thread.is_alive():
+        thread.join(timeout=2.0)
     return None, "", errors[-1] if errors else "Discord desktop app is not running"
 
 
@@ -330,7 +380,7 @@ class PresenceService:
             ipc, self._ipc = self._ipc, None
             self._set_status_locked("Rich Presence off")
         if ipc is not None:
-            ipc.close()
+            ipc.shutdown()
         thread = self._thread
         if thread is not None and thread.is_alive():
             thread.join(timeout=1.2)
@@ -428,7 +478,7 @@ class PresenceService:
             with self._lock:
                 if self._ipc is ipc:
                     self._ipc = None
-            ipc.close()
+            ipc.shutdown()
             if self._stop.is_set():
                 break
             self._set_status("Discord connection closed — reconnecting…")
