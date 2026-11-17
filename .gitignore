@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Build output
+build/dist/
+build/dist-linux/
+build/work/
+build/work-linux/
+build/installer/
+build/*.spec
+build/AutoClicker-*-linux-x86_64.tar.gz
+
+# Local application state (settings, macros, images, logs)
+data/
+run.log
+run-error.log
+*.log
+
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store

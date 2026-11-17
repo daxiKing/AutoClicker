@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AutoClicker
+GenericName=Automation Utility
+Comment=Auto clicks, auto keys and macros for Windows and Linux
+Exec=AutoClicker
+Icon=autoclicker
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=autoclicker;macro;automation;clicker;
+StartupNotify=true
+StartupWMClass=AutoClicker
