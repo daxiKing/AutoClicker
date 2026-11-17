@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -32,9 +33,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: AutoClicker-Windows
-          path: |
-            build/dist/AutoClicker/**
-            build/installer/*.exe
+          path: build/dist/AutoClicker/**
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoClicker-Installer
+          path: build/installer/*.exe
           if-no-files-found: error
 
   linux:
@@ -64,3 +68,26 @@ jobs:
           name: AutoClicker-Linux
           path: build/AutoClicker-*-linux-x86_64.tar.gz
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: AutoClicker-Installer
+          path: assets/installer
+      - uses: actions/download-artifact@v4
+        with:
+          name: AutoClicker-Linux
+          path: assets/linux
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: AutoClicker ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            assets/installer/AutoClicker-Setup-*.exe
+            assets/linux/AutoClicker-*-linux-x86_64.tar.gz

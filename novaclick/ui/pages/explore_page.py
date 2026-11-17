@@ -786,6 +786,16 @@ class ExplorePage(Page):
         self._checking = False
         self.check_btn.setEnabled(True)
         self.check_btn.setText("Check for updates")
+        if message == updater.NO_RELEASE_MESSAGE:
+            self.latest_label.setText("No release")
+            self.update_status.setText(
+                "No public release yet — publish one on GitHub to enable updates."
+            )
+            self.update_status.setStyleSheet(
+                f"font-size: 10px; color: {COLORS['muted']};"
+            )
+            self.main.log("info", "GitHub release check — the repository has no releases yet.")
+            return
         self.update_status.setText(f"Release check failed — {message}")
         self.update_status.setStyleSheet(f"font-size: 10px; color: {COLORS['red']};")
         self.main.log("warning", f"GitHub release check failed: {message}")

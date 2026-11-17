@@ -30,6 +30,13 @@ class UpdateError(RuntimeError):
     """Raised for network, API or download failures."""
 
 
+class ReleaseNotFound(UpdateError):
+    """Raised when the repository has no published release yet."""
+
+
+NO_RELEASE_MESSAGE = "No public release has been published yet."
+
+
 def normalize_repo(value: str | None) -> str:
     """Accept ``owner/repo`` or a github.com URL and return ``owner/repo``."""
     text = str(value or "").strip()
@@ -122,7 +129,12 @@ def fetch_repo(repo: str = DEFAULT_REPO, timeout: float = 12.0) -> dict[str, Any
 def fetch_latest(repo: str = DEFAULT_REPO, timeout: float = 12.0) -> dict[str, Any]:
     """Fetch the newest published GitHub release."""
     repo = normalize_repo(repo)
-    payload = _request_json(f"{API_ROOT}/repos/{repo}/releases/latest", timeout)
+    try:
+        payload = _request_json(f"{API_ROOT}/repos/{repo}/releases/latest", timeout)
+    except UpdateError as exc:
+        if "not found" in str(exc).lower():
+            raise ReleaseNotFound(NO_RELEASE_MESSAGE) from exc
+        raise
     if not isinstance(payload, dict):
         raise UpdateError("Unexpected release payload.")
     assets: list[dict[str, Any]] = []
@@ -259,6 +271,8 @@ def download_installer(
 
 __all__ = [
     "DEFAULT_REPO",
+    "NO_RELEASE_MESSAGE",
+    "ReleaseNotFound",
     "UpdateError",
     "download",
     "download_installer",

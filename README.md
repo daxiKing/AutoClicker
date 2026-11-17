@@ -98,7 +98,9 @@ The portable folder lands in `build/dist-linux/AutoClicker` and the tarball in
 `build/AutoClicker-2.3.0-linux-x86_64.tar.gz`.
 
 The GitHub Actions workflow in `.github/workflows/build.yml` builds both platforms on
-every push to `main` and on pull requests.
+every push to `main` and on pull requests. Pushing a `v*` tag also publishes the Windows
+installer and the Linux tarball to the GitHub Releases page, which is the feed the
+in-app updater reads.
 
 ## Discord Rich Presence
 
