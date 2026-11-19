@@ -22,10 +22,26 @@ from .base import Page
 
 UPDATES = [
     {
+        "version": "2.5.0",
+        "codename": "Orbit",
+        "date": "November 19, 2026",
+        "latest": True,
+        "items": [
+            "Visual macro editor — open any recording and trim a time range, reorder events, nudge timestamps by ±10 ms, delete selections or revert, with the timeline rebuilt and saved in one step.",
+            "App profiles — match a foreground window title fragment to a saved clicker preset and apply it automatically when the engine is idle, with a one-click “Use active window” capture.",
+            "Scheduled runs — play a macro at a local time on weekdays, weekends or every day, checked every 15 seconds and remembered across restarts.",
+            "Conditional image sequences — chain steps that click a target, press a key, wait or stop; each scan step has a timeout and a skip, retry-forever or hard-stop miss policy.",
+            "Compact run HUD — a small always-on-top status bar shows click, key, macro or sequence telemetry and stops everything with one button.",
+            "Automation page — a dedicated home for profiles and schedules, grouped under AUTOMATION in the sidebar.",
+            "Sequence runner core — validated steps, template caching, per-step progress and injectable matcher/actor/grabber hooks for testing.",
+            "All v2.4.0 features retained: rebuilt engines, Discord Rich Presence, Explore, 43 languages, Linux builds and GitHub auto-updates.",
+        ],
+    },
+    {
         "version": "2.4.0",
         "codename": "Nebula",
         "date": "November 17, 2026",
-        "latest": True,
+        "latest": False,
         "items": [
             "1000× better everything — rebuilt click engine pacing, smoother auto-key timing, tighter macro playback and faster image-target scans across Windows and Linux.",
             "Discord Rich Presence — publishes the live engine state, session timer and a GitHub link through Discord's local IPC socket with its own public client ID.",
@@ -145,11 +161,50 @@ UPDATES = [
 ]
 
 ROADMAP = [
-    "Visual macro editor with trimming and reordering.",
-    "Per-application profiles and scheduled runs.",
-    "Multi-image sequences with conditional actions.",
-    "Compact overlay HUD while automations run.",
+    {
+        "version": "2.5.0",
+        "codename": "Orbit",
+        "status": "SHIPPED",
+        "headline": "Automation that watches your workflow.",
+        "items": [
+            "Visual macro timeline editor — trim, reorder, nudge, delete and rebuild.",
+            "Per-app profiles — window-title matching applies saved clicker presets.",
+            "Scheduled runs — local-time macro playback on chosen days.",
+            "Conditional image sequences — click, key, wait or stop with miss policies.",
+            "Compact run HUD — floating telemetry with a one-click panic stop.",
+        ],
+    },
+    {
+        "version": "2.6.0",
+        "codename": "Pulse",
+        "status": "NEXT",
+        "headline": "Smarter flows, fewer gaps.",
+        "items": [
+            "Macro conditionals — per-event waits, loop counts and if-image-visible branches.",
+            "Sequence branching — jump to another step on match or miss instead of running linearly.",
+            "Profile bundles — export and import app profiles, schedules and macros together.",
+            "HUD layouts — compact, expanded and corner-snapped placements.",
+        ],
+    },
+    {
+        "version": "2.7.0",
+        "codename": "Prism",
+        "status": "EXPLORING",
+        "headline": "See more, script less.",
+        "items": [
+            "Drag-selected scan regions across multiple monitors.",
+            "OCR triggers for menus, chat and HUD text.",
+            "Opt-in, local-first cloud sync for the macro vault.",
+            "Plugin hooks for community steps and actions.",
+        ],
+    },
 ]
+
+STATUS_STYLES = {
+    "SHIPPED": ("#008000", "#ffffe1"),
+    "NEXT": ("#000080", "#cce8ff"),
+    "EXPLORING": ("#404040", "#e8e8e8"),
+}
 
 
 class UpdatesPage(Page):
@@ -162,8 +217,8 @@ class UpdatesPage(Page):
         columns.setSpacing(16)
         left = QVBoxLayout()
         left.setSpacing(16)
-        left.addWidget(self._build_release_card())
         left.addWidget(self._build_roadmap_card())
+        left.addWidget(self._build_release_card())
         left.addStretch(1)
         right = QVBoxLayout()
         right.setSpacing(16)
@@ -189,12 +244,12 @@ class UpdatesPage(Page):
         title = label("Every change, every action.", "HeroTitle")
         text.addWidget(title)
         sub = label(
-            "Release notes live beside a real-time feed of engine events, hotkeys and faults.",
+            "Roadmap milestones, release notes and a real-time feed of engine events, hotkeys and faults.",
             "HeroSub",
         )
         text.addWidget(sub)
         layout.addLayout(text, 1)
-        badge = label("v2.4.0 · LATEST", "VersionBadge")
+        badge = label("v2.5.0 · LATEST", "VersionBadge")
         badge.setStyleSheet(
             "background: #ffffff; border: 2px solid; border-top-color: #404040; "
             "border-left-color: #404040; border-right-color: #ffffff; "
@@ -253,18 +308,53 @@ class UpdatesPage(Page):
 
     def _build_roadmap_card(self) -> Card:
         card = Card()
-        card.body.addWidget(label("On the roadmap", "CardTitle"))
-        for item in ROADMAP:
-            row = QHBoxLayout()
-            row.setSpacing(9)
-            badge = label("NEXT", "VersionBadge")
-            badge.setStyleSheet(
-                "background: #ffffe1; border: 1px solid #808080; "
-                "color: #800080; font-size: 8px; font-weight: 700; padding: 2px 5px;"
+        header = QHBoxLayout()
+        header.addWidget(label("Roadmap", "CardTitle"))
+        header.addStretch(1)
+        header.addWidget(label("UPDATED FOR 2.5.0", "Tiny"))
+        card.body.addLayout(header)
+        card.body.addWidget(
+            label(
+                "Shipped work is archived below. Next is the planned 2.6.0 line; "
+                "exploring items are under evaluation and may move.",
+                "Muted",
+                wrap=True,
             )
-            row.addWidget(badge, 0, Qt.AlignTop)
-            row.addWidget(label(item, "Muted", wrap=True), 1)
-            card.body.addLayout(row)
+        )
+        for index, milestone in enumerate(ROADMAP):
+            if index:
+                card.body.addWidget(hline())
+            color, background = STATUS_STYLES.get(
+                milestone["status"], STATUS_STYLES["EXPLORING"]
+            )
+            block = QVBoxLayout()
+            block.setSpacing(6)
+            title_row = QHBoxLayout()
+            title_row.setSpacing(8)
+            version = QLabel(f"v{milestone['version']}")
+            version.setStyleSheet(
+                "font-family: 'Courier New'; font-size: 15px; font-weight: 700; color: #000080;"
+            )
+            title_row.addWidget(version)
+            title_row.addWidget(label(milestone["codename"], "SectionTitle"))
+            chip = label(milestone["status"], "VersionBadge")
+            chip.setStyleSheet(
+                f"background: {background}; border: 1px solid #808080; color: {color}; "
+                "font-size: 8px; font-weight: 700; padding: 2px 5px;"
+            )
+            title_row.addWidget(chip)
+            title_row.addStretch(1)
+            block.addLayout(title_row)
+            block.addWidget(label(milestone["headline"], "Tiny"))
+            for item in milestone["items"]:
+                row = QHBoxLayout()
+                row.setSpacing(9)
+                dot = QLabel("▸")
+                dot.setStyleSheet(f"color: {color}; font-size: 10px;")
+                row.addWidget(dot, 0, Qt.AlignTop)
+                row.addWidget(label(item, "Muted", wrap=True), 1)
+                block.addLayout(row)
+            card.body.addLayout(block)
         return card
 
     def _build_activity_card(self) -> Card:

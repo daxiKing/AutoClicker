@@ -126,6 +126,88 @@ def vk_name(vk: int) -> str:
     return f"VK {vk:02X}"
 
 
+_NAME_TO_VK = {
+    "backspace": 0x08,
+    "tab": 0x09,
+    "enter": 0x0D,
+    "return": 0x0D,
+    "pause": 0x13,
+    "caps lock": 0x14,
+    "capslock": 0x14,
+    "esc": 0x1B,
+    "escape": 0x1B,
+    "space": 0x20,
+    "spacebar": 0x20,
+    "page up": 0x21,
+    "pageup": 0x21,
+    "pgup": 0x21,
+    "page down": 0x22,
+    "pagedown": 0x22,
+    "pgdn": 0x22,
+    "end": 0x23,
+    "home": 0x24,
+    "left": 0x25,
+    "up": 0x26,
+    "right": 0x27,
+    "down": 0x28,
+    "print screen": 0x2C,
+    "printscreen": 0x2C,
+    "insert": 0x2D,
+    "delete": 0x2E,
+    "del": 0x2E,
+    "menu": 0x5D,
+    "num lock": 0x90,
+    "numlock": 0x90,
+    "scroll lock": 0x91,
+    "scrolllock": 0x91,
+    "left shift": 0xA0,
+    "right shift": 0xA1,
+    "left ctrl": 0xA2,
+    "right ctrl": 0xA3,
+    "left alt": 0xA4,
+    "right alt": 0xA5,
+    ";": 0xBA,
+    "=": 0xBB,
+    ",": 0xBC,
+    "-": 0xBD,
+    ".": 0xBE,
+    "/": 0xBF,
+    "`": 0xC0,
+    "[": 0xDB,
+    "\\": 0xDC,
+    "]": 0xDD,
+    "'": 0xDE,
+}
+
+
+def vk_from_name(name: str) -> int | None:
+    """Resolve a friendly key name (``"space"``, ``"F6"``, ``"a"``) to a VK."""
+    text = str(name or "").strip().lower()
+    if not text:
+        return None
+    if text in _NAME_TO_VK:
+        return _NAME_TO_VK[text]
+    if len(text) == 1:
+        character = text.upper()
+        if "A" <= character <= "Z" or "0" <= character <= "9":
+            return ord(character)
+    if text.startswith("f") and text[1:].isdigit():
+        number = int(text[1:])
+        if 1 <= number <= 24:
+            return 0x70 + number - 1
+    if text.startswith("numpad ") and text[7:].isdigit():
+        number = int(text[7:])
+        if 0 <= number <= 9:
+            return 0x60 + number
+    if text.startswith("vk "):
+        try:
+            value = int(text[3:], 16)
+        except ValueError:
+            return None
+        return value if 0 < value <= 0xFE else None
+    return None
+
+
 def is_extended(vk: int) -> bool:
     return vk in EXTENDED_VKS
 

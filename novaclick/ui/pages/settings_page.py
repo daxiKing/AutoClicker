@@ -140,6 +140,13 @@ class SettingsPage(Page):
             lambda checked: self.main.settings.set("show_toasts", checked),
         )
         card.body.addWidget(hline())
+        self.show_run_hud = self._add_toggle(
+            card.body,
+            "Compact run HUD",
+            "Float a small always-on-top status bar while an automation is running.",
+            lambda checked: self.main.set_run_hud(checked),
+        )
+        card.body.addWidget(hline())
         self.confirm_delete = self._add_toggle(
             card.body,
             "Confirm macro deletion",
@@ -638,6 +645,7 @@ class SettingsPage(Page):
         for toggle, key, default in (
             (self.always_on_top, "always_on_top", False),
             (self.show_toasts, "show_toasts", True),
+            (self.show_run_hud, "show_run_hud", True),
             (self.confirm_delete, "confirm_delete", True),
             (self.game_mode, "game_mode", False),
             (self.click_sound, "click_sound", False),

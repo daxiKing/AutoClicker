@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 DEFAULT_REPO = "daxiKing/AutoClicker"
-USER_AGENT = "AutoClicker-Updater/2.4.0"
+USER_AGENT = "AutoClicker-Updater/2.5.0"
 API_ROOT = "https://api.github.com"
 
 _VERSION_RE = re.compile(r"(\d+(?:\.\d+){0,3})")
@@ -56,7 +56,7 @@ def normalize_repo(value: str | None) -> str:
 
 
 def parse_version(value: str | None) -> tuple[int, int, int, int]:
-    """Turn ``v2.4.0`` (or a tag name) into a comparable four-part tuple."""
+    """Turn ``v2.5.0`` (or a tag name) into a comparable four-part tuple."""
     match = _VERSION_RE.search(str(value or ""))
     if not match:
         return (0, 0, 0, 0)

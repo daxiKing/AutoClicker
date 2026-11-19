@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QSlider,
@@ -43,8 +44,10 @@ from ...core.image_clicker import (
     ImageConfig,
     load_template,
 )
+from ...core.keys import vk_from_name
 from ...core.macros import format_clock
 from ...core.paths import DATA_DIR
+from ...core.sequences import SequenceConfig, SequenceRunner, normalize_steps, step_summary
 from ..theme import COLORS, FONT_MONO, FONT_UI
 from ..widgets import (
     Card,
@@ -272,6 +275,7 @@ class ImagePage(Page):
         super().__init__()
         self.main = main
         self.engine = ImageClicker()
+        self.sequence = SequenceRunner()
         self._active_ui = False
         self._manual_stop = False
         self._path = ""
@@ -280,6 +284,10 @@ class ImagePage(Page):
         self._last_match_count = 0
         self._started_at = 0.0
         self._last_score = 0.0
+        self._seq_steps: list[dict] = []
+        self._seq_active_ui = False
+        self._seq_last_message = ""
+        self._seq_error_shown = False
 
         self._build_hero()
         columns = QHBoxLayout()
@@ -292,6 +300,7 @@ class ImagePage(Page):
         right = QVBoxLayout()
         right.setSpacing(16)
         right.addWidget(self._build_telemetry_card())
+        right.addWidget(self._build_sequence_card())
         right.addWidget(self._build_tips_card())
         right.addStretch(1)
         columns.addLayout(left, 5)
@@ -313,6 +322,7 @@ class ImagePage(Page):
         self._timer.start()
 
         self._load_targets()
+        self._load_sequence()
         self._update_summary()
 
     # ------------------------------------------------------------------
@@ -581,6 +591,101 @@ class ImagePage(Page):
         card.body.addLayout(matched_row)
         return card
 
+    def _build_sequence_card(self) -> Card:
+        card = Card()
+        header = QHBoxLayout()
+        header.addWidget(label("Sequence runner", "CardTitle"))
+        header.addStretch(1)
+        self.seq_badge = label("0 STEPS", "VersionBadge")
+        header.addWidget(self.seq_badge)
+        card.body.addLayout(header)
+        card.body.addWidget(
+            label(
+                "Scan for targets in order, then click, press a key, wait or stop. "
+                "A missed target can be skipped, retried or treated as a hard stop.",
+                "Muted",
+                wrap=True,
+            )
+        )
+
+        self.seq_list = QListWidget()
+        self.seq_list.setFixedHeight(112)
+        self.seq_list.currentItemChanged.connect(self._on_sequence_selected)
+        card.body.addWidget(self.seq_list)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(7)
+        grid.addWidget(label("Target", "Tiny"), 0, 0)
+        self.seq_target_combo = QComboBox()
+        self.seq_target_combo.setMinimumWidth(148)
+        grid.addWidget(self.seq_target_combo, 0, 1)
+        grid.addWidget(label("Action", "Tiny"), 0, 2)
+        self.seq_action_combo = QComboBox()
+        for key, name in (
+            ("click", "Click target"),
+            ("key", "Press key"),
+            ("wait", "Wait"),
+            ("stop", "Stop"),
+        ):
+            self.seq_action_combo.addItem(name, key)
+        self.seq_action_combo.currentIndexChanged.connect(self._on_sequence_action)
+        grid.addWidget(self.seq_action_combo, 0, 3)
+        grid.addWidget(label("Param", "Tiny"), 1, 0)
+        self.seq_param_input = QLineEdit()
+        self.seq_param_input.setPlaceholderText("Space / 0.50")
+        self.seq_param_input.setFixedWidth(120)
+        grid.addWidget(self.seq_param_input, 1, 1)
+        grid.addWidget(label("Timeout", "Tiny"), 1, 2)
+        self.seq_timeout_spin = QDoubleSpinBox()
+        self.seq_timeout_spin.setRange(0.2, 600.0)
+        self.seq_timeout_spin.setSingleStep(0.5)
+        self.seq_timeout_spin.setDecimals(1)
+        self.seq_timeout_spin.setValue(10.0)
+        self.seq_timeout_spin.setSuffix(" s")
+        self.seq_timeout_spin.setFixedWidth(86)
+        grid.addWidget(self.seq_timeout_spin, 1, 3)
+        grid.addWidget(label("If missing", "Tiny"), 2, 0)
+        self.seq_miss_combo = QComboBox()
+        for key, name in (("skip", "Skip step"), ("retry", "Retry forever"), ("abort", "Stop sequence")):
+            self.seq_miss_combo.addItem(name, key)
+        grid.addWidget(self.seq_miss_combo, 2, 1, 1, 3)
+        grid.setColumnStretch(1, 1)
+        card.body.addLayout(grid)
+
+        tools = QHBoxLayout()
+        tools.setSpacing(6)
+        add_btn = make_button("Add", "GhostButton")
+        add_btn.setToolTip("Append the configured step to the sequence")
+        add_btn.clicked.connect(self._add_sequence_step)
+        update_btn = make_button("Update", "GhostButton")
+        update_btn.setToolTip("Apply the controls to the selected step")
+        update_btn.clicked.connect(self._update_sequence_step)
+        remove_btn = make_button("Remove", "GhostButton")
+        remove_btn.clicked.connect(self._remove_sequence_step)
+        up_btn = make_button("↑", "GhostButton")
+        up_btn.setFixedWidth(34)
+        up_btn.setToolTip("Move step earlier")
+        up_btn.clicked.connect(lambda: self._move_sequence_step(-1))
+        down_btn = make_button("↓", "GhostButton")
+        down_btn.setFixedWidth(34)
+        down_btn.setToolTip("Move step later")
+        down_btn.clicked.connect(lambda: self._move_sequence_step(1))
+        for button in (add_btn, update_btn, remove_btn, up_btn, down_btn):
+            tools.addWidget(button)
+        tools.addStretch(1)
+        self.seq_run_btn = make_button("▶  Run sequence", "StartButton")
+        self.seq_run_btn.setToolTip("Run the steps in order with the current scan settings")
+        self.seq_run_btn.clicked.connect(self._toggle_sequence)
+        tools.addWidget(self.seq_run_btn)
+        card.body.addLayout(tools)
+
+        self.seq_status = label("No sequence yet — add at least one step.", "Tiny", wrap=True)
+        self.seq_status.setStyleSheet("color: #404040;")
+        card.body.addWidget(self.seq_status)
+        self._refresh_sequence_targets()
+        return card
+
     def _build_tips_card(self) -> Card:
         card = Card()
         card.body.addWidget(label("Field notes", "CardTitle"))
@@ -624,6 +729,7 @@ class ImagePage(Page):
                 targets.append({"path": path, "enabled": enabled})
         self._targets = targets
         self._refresh_target_list()
+        self._refresh_sequence_targets()
         if missing:
             self.main.log("info", f"{missing} saved target image(s) were missing and skipped.")
 
@@ -717,7 +823,7 @@ class ImagePage(Page):
     def _browse_images(self) -> None:
         if not IMAGE_DEPS:
             return
-        if self.engine.is_active:
+        if self._sequence_busy():
             self.main.toast("warning", "Stop scanning before changing the target library.")
             return
         paths, _ = QFileDialog.getOpenFileNames(
@@ -732,7 +838,7 @@ class ImagePage(Page):
     def _add_paths(self, paths: list[str], select: str | None = None) -> None:
         if not IMAGE_DEPS:
             return
-        if self.engine.is_active:
+        if self._sequence_busy():
             self.main.toast("warning", "Stop scanning before changing the target library.")
             return
         added: list[str] = []
@@ -755,6 +861,7 @@ class ImagePage(Page):
         if added:
             self._save_targets()
             self._refresh_target_list(select=select or added[0])
+            self._refresh_sequence_targets()
             self.main.log("info", f"Added {len(added)} target image(s) to the library.")
             self.main.toast("success", f"Added {len(added)} target image(s).")
         if skipped:
@@ -765,7 +872,7 @@ class ImagePage(Page):
         """Save the clipboard image as a PNG target and add it to the library."""
         if not IMAGE_DEPS:
             return
-        if self.engine.is_active:
+        if self._sequence_busy():
             self.main.toast("warning", "Stop scanning before changing the target library.")
             return
         image = QApplication.clipboard().image()
@@ -794,7 +901,7 @@ class ImagePage(Page):
         self._add_paths([str(path)], select=str(path))
 
     def _remove_selected(self) -> None:
-        if self.engine.is_active:
+        if self._sequence_busy():
             self.main.toast("warning", "Stop scanning before changing the target library.")
             return
         path = self._current_target_path()
@@ -804,13 +911,14 @@ class ImagePage(Page):
         self._targets = [target for target in self._targets if target["path"] != path]
         self._save_targets()
         self._refresh_target_list()
+        self._refresh_sequence_targets()
         self.main.log("info", f"Removed target {Path(path).name} from the library.")
         self.main.toast("info", "Target removed from the library; the file was kept.")
 
     def _test_match(self) -> None:
         if not IMAGE_DEPS:
             return
-        if self.engine.is_active:
+        if self._sequence_busy():
             self.main.toast("warning", "Stop scanning before testing a match.")
             return
         if not self._enabled_paths():
@@ -914,6 +1022,9 @@ class ImagePage(Page):
     def start(self) -> None:
         if self.engine.is_active:
             return
+        if self.sequence.is_active:
+            self.main.toast("warning", "Stop the sequence before scanning a single target.")
+            return
         if not IMAGE_DEPS:
             self.main.toast("error", f"Image dependencies missing: {IMAGE_IMPORT_ERROR}")
             return
@@ -961,10 +1072,14 @@ class ImagePage(Page):
             self.main.toast("info", f"Image targeting stopped — {snapshot.get('matches', 0)} click(s)")
 
     def force_stop(self) -> bool:
+        stopped = False
+        if self.sequence.is_active or self._seq_active_ui:
+            self._stop_sequence(quiet=True)
+            stopped = True
         if self.engine.is_active or self._active_ui:
             self.stop(quiet=True)
-            return True
-        return False
+            stopped = True
+        return stopped
 
     def _set_running_ui(self, running: bool) -> None:
         self.start_btn.setText("Stop scanning" if running else "Start scanning")
@@ -991,6 +1106,7 @@ class ImagePage(Page):
                 self.test_btn,
                 self.remove_btn,
                 self.target_list,
+                self.seq_run_btn,
             ):
                 widget.setEnabled(False)
         else:
@@ -1007,6 +1123,7 @@ class ImagePage(Page):
                 self.test_btn,
                 self.remove_btn,
                 self.target_list,
+                self.seq_run_btn,
             ):
                 widget.setEnabled(bool(IMAGE_DEPS))
         self._update_summary()
@@ -1032,7 +1149,329 @@ class ImagePage(Page):
         self.matched_label.setText(str(snapshot.get("matched") or "—"))
         self.hero_sub.setText(f"Best match {score * 100:.1f}%  ·  {scans:,} scans  ·  {matches:,} clicks")
 
+    # ------------------------------------------------------------------
+    # Sequence runner
+    # ------------------------------------------------------------------
+    def _sequence_busy(self) -> bool:
+        return self.engine.is_active or bool(getattr(self, "sequence", None) and self.sequence.is_active)
+
+    def _refresh_sequence_targets(self) -> None:
+        if not hasattr(self, "seq_target_combo"):
+            return
+        current = self.seq_target_combo.currentData()
+        self.seq_target_combo.blockSignals(True)
+        self.seq_target_combo.clear()
+        for target in self._targets:
+            path = str(target.get("path", ""))
+            if not path:
+                continue
+            name = Path(path).name
+            if not target.get("enabled", True):
+                name += "  (off)"
+            self.seq_target_combo.addItem(name, path)
+        if current:
+            index = self.seq_target_combo.findData(current)
+            if index >= 0:
+                self.seq_target_combo.setCurrentIndex(index)
+        self.seq_target_combo.blockSignals(False)
+        self._on_sequence_action(self.seq_action_combo.currentIndex())
+
+    def _load_sequence(self) -> None:
+        raw = self.main.settings.get("image_sequence", [])
+        self._seq_steps = normalize_steps(raw if isinstance(raw, list) else [])
+        self._refresh_sequence_targets()
+        self._refresh_sequence_list()
+
+    def _save_sequence(self) -> None:
+        self.main.settings.set("image_sequence", self._seq_steps)
+
+    def _refresh_sequence_list(self, select: int | None = None) -> None:
+        if not hasattr(self, "seq_list"):
+            return
+        if select is None and self.seq_list.currentItem() is not None:
+            select = int(self.seq_list.currentItem().data(Qt.UserRole))
+        self.seq_list.blockSignals(True)
+        self.seq_list.clear()
+        for row, step in enumerate(self._seq_steps):
+            item = QListWidgetItem(step_summary(step, row))
+            item.setData(Qt.UserRole, row)
+            item.setToolTip(step.get("image", "") or "Timed step")
+            self.seq_list.addItem(item)
+            if select == row:
+                self.seq_list.setCurrentItem(item)
+        self.seq_list.blockSignals(False)
+        count = len(self._seq_steps)
+        self.seq_badge.setText(f"{count} STEP{'S' if count != 1 else ''}")
+        if count == 0:
+            self.seq_status.setText("No sequence yet — add at least one step.")
+        else:
+            self.seq_status.setText(
+                f"{count} step{'s' if count != 1 else ''} ready · {len(self._enabled_paths())} armed target(s)."
+            )
+        if self.seq_list.currentItem() is not None:
+            self._on_sequence_selected(self.seq_list.currentItem(), None)
+        self._on_sequence_action(self.seq_action_combo.currentIndex())
+
+    def _selected_sequence_row(self) -> int:
+        item = self.seq_list.currentItem()
+        return int(item.data(Qt.UserRole)) if item is not None else -1
+
+    def _on_sequence_selected(self, current: QListWidgetItem | None, previous) -> None:
+        if current is None:
+            return
+        row = int(current.data(Qt.UserRole))
+        if not (0 <= row < len(self._seq_steps)):
+            return
+        step = self._seq_steps[row]
+        action_index = self.seq_action_combo.findData(step.get("action", "click"))
+        if action_index >= 0:
+            self.seq_action_combo.blockSignals(True)
+            self.seq_action_combo.setCurrentIndex(action_index)
+            self.seq_action_combo.blockSignals(False)
+        image_index = self.seq_target_combo.findData(step.get("image", ""))
+        if image_index >= 0:
+            self.seq_target_combo.setCurrentIndex(image_index)
+        self.seq_timeout_spin.setValue(float(step.get("timeout_s", 10.0)))
+        miss_index = self.seq_miss_combo.findData(step.get("on_miss", "skip"))
+        if miss_index >= 0:
+            self.seq_miss_combo.setCurrentIndex(miss_index)
+        action = step.get("action", "click")
+        if action == "key":
+            self.seq_param_input.setText(str(step.get("key", "Space")))
+        elif action == "wait":
+            self.seq_param_input.setText(f"{int(step.get('wait_ms', 500)) / 1000:.2f}")
+        else:
+            self.seq_param_input.clear()
+        self._on_sequence_action(self.seq_action_combo.currentIndex())
+
+    def _on_sequence_action(self, _index: int) -> None:
+        if not hasattr(self, "seq_action_combo"):
+            return
+        action = str(self.seq_action_combo.currentData() or "click")
+        is_scan = action in ("click", "key")
+        self.seq_target_combo.setEnabled(is_scan)
+        self.seq_timeout_spin.setEnabled(is_scan)
+        self.seq_miss_combo.setEnabled(is_scan)
+        if action == "key":
+            self.seq_param_input.setEnabled(True)
+            self.seq_param_input.setPlaceholderText("Space / F6 / a")
+        elif action == "wait":
+            self.seq_param_input.setEnabled(True)
+            self.seq_param_input.setPlaceholderText("Seconds — 0.50")
+        else:
+            self.seq_param_input.setEnabled(False)
+            self.seq_param_input.setPlaceholderText("—")
+
+    def _build_sequence_step(self) -> dict | None:
+        action = str(self.seq_action_combo.currentData() or "click")
+        image = str(self.seq_target_combo.currentData() or "")
+        if action in ("click", "key") and not image:
+            self.main.toast("warning", "Add a target image to the library first.")
+            return None
+        key = "Space"
+        wait_ms = 500
+        if action == "key":
+            key = self.seq_param_input.text().strip() or "Space"
+            if vk_from_name(key) is None:
+                self.main.toast("warning", f"Unknown key name “{key}”.")
+                return None
+        if action == "wait":
+            text = self.seq_param_input.text().strip().replace(",", ".")
+            try:
+                seconds = float(text) if text else 0.5
+            except ValueError:
+                self.main.toast("warning", "Wait time must be a number of seconds, e.g. 0.50.")
+                return None
+            if seconds <= 0:
+                self.main.toast("warning", "Wait time must be greater than zero.")
+                return None
+            wait_ms = int(seconds * 1000)
+        return {
+            "image": image if action in ("click", "key") else "",
+            "action": action,
+            "key": key,
+            "wait_ms": wait_ms,
+            "timeout_s": float(self.seq_timeout_spin.value()),
+            "on_miss": str(self.seq_miss_combo.currentData() or "skip"),
+        }
+
+    def _add_sequence_step(self) -> None:
+        if self._sequence_busy():
+            self.main.toast("warning", "Stop the current run before editing the sequence.")
+            return
+        step = self._build_sequence_step()
+        if step is None:
+            return
+        self._seq_steps.append(step)
+        self._save_sequence()
+        self._refresh_sequence_list(select=len(self._seq_steps) - 1)
+        self.main.log("info", f"Sequence step added — {step_summary(step, len(self._seq_steps) - 1)}.")
+        self.main.toast("success", "Sequence step added.")
+
+    def _update_sequence_step(self) -> None:
+        if self._sequence_busy():
+            self.main.toast("warning", "Stop the current run before editing the sequence.")
+            return
+        row = self._selected_sequence_row()
+        if row < 0:
+            self.main.toast("warning", "Select a sequence step to update first.")
+            return
+        step = self._build_sequence_step()
+        if step is None:
+            return
+        self._seq_steps[row] = step
+        self._save_sequence()
+        self._refresh_sequence_list(select=row)
+        self.main.toast("success", "Sequence step updated.")
+
+    def _remove_sequence_step(self) -> None:
+        if self._sequence_busy():
+            self.main.toast("warning", "Stop the current run before editing the sequence.")
+            return
+        row = self._selected_sequence_row()
+        if row < 0:
+            self.main.toast("warning", "Select a sequence step to remove first.")
+            return
+        self._seq_steps.pop(row)
+        self._save_sequence()
+        self._refresh_sequence_list(select=max(0, min(row, len(self._seq_steps) - 1)))
+        self.main.log("info", "Sequence step removed.")
+        self.main.toast("info", "Sequence step removed.")
+
+    def _move_sequence_step(self, offset: int) -> None:
+        if self._sequence_busy():
+            return
+        row = self._selected_sequence_row()
+        if row < 0:
+            return
+        target = max(0, min(len(self._seq_steps) - 1, row + int(offset)))
+        if target == row:
+            return
+        step = self._seq_steps.pop(row)
+        self._seq_steps.insert(target, step)
+        self._save_sequence()
+        self._refresh_sequence_list(select=target)
+
+    def _sequence_config(self) -> SequenceConfig:
+        return SequenceConfig(
+            threshold=self._threshold_value(),
+            interval=self.interval_spin.value(),
+            monitor="all" if self.monitor_combo.currentIndex() == 0 else "primary",
+            grayscale=not self.color_toggle.isChecked(),
+            offset_x=self.offset_x.value(),
+            offset_y=self.offset_y.value(),
+            button=self.button_segment.current_key(),
+        )
+
+    def _toggle_sequence(self) -> None:
+        if self.sequence.is_active or self._seq_active_ui:
+            self._stop_sequence()
+        else:
+            self._start_sequence()
+
+    def _start_sequence(self) -> None:
+        if self.sequence.is_active:
+            return
+        if self.engine.is_active:
+            self.main.toast("warning", "Stop image scanning before running a sequence.")
+            return
+        steps = normalize_steps(self._seq_steps)
+        if not steps:
+            self.main.toast("warning", "Add at least one sequence step first.")
+            return
+        self.main.acquire("image")
+        if not self.sequence.start(steps, self._sequence_config()):
+            self.main.release("image")
+            error = self.sequence.snapshot().get("error") or "Sequence could not start."
+            self.main.toast("error", error)
+            self.main.log("error", error)
+            return
+        self._seq_active_ui = True
+        self._seq_last_message = ""
+        self._seq_error_shown = False
+        self._set_sequence_ui(True)
+        self.main.log("hotkey", f"Sequence engaged — {len(steps)} step(s).")
+        self.main.toast("success", f"Sequence engaged · {len(steps)} step(s)")
+
+    def _stop_sequence(self, quiet: bool = False) -> None:
+        if not self.sequence.is_active and not self._seq_active_ui:
+            return
+        self.sequence.stop()
+        snapshot = self.sequence.snapshot()
+        self._seq_active_ui = False
+        self._set_sequence_ui(False)
+        self.main.release("image")
+        self.seq_status.setText(
+            f"Stopped · step {snapshot.get('step_index', 0)}/{snapshot.get('step_total', 0)} · "
+            f"{snapshot.get('scans', 0):,} scans"
+        )
+        if not quiet:
+            self.main.log("info", "Sequence stopped.")
+            self.main.toast("info", "Sequence stopped.")
+
+    def _set_sequence_ui(self, running: bool) -> None:
+        self.seq_run_btn.setText("■  Stop sequence" if running else "▶  Run sequence")
+        self.seq_run_btn.setProperty("running", running)
+        self.seq_run_btn.style().unpolish(self.seq_run_btn)
+        self.seq_run_btn.style().polish(self.seq_run_btn)
+        for widget in (
+            self.seq_list,
+            self.seq_target_combo,
+            self.seq_action_combo,
+            self.seq_param_input,
+            self.seq_timeout_spin,
+            self.seq_miss_combo,
+        ):
+            widget.setEnabled(not running)
+        if running:
+            self.seq_badge.setText("RUNNING")
+            self.seq_badge.setStyleSheet(
+                "background: #ffffe1; border: 1px solid #000000; "
+                "color: #008000; padding: 3px 7px; font-size: 9px; font-weight: 700;"
+            )
+        else:
+            count = len(self._seq_steps)
+            self.seq_badge.setText(f"{count} STEP{'S' if count != 1 else ''}")
+            self.seq_badge.setStyleSheet("")
+
+    def _sequence_tick(self) -> None:
+        if not self._seq_active_ui and not self.sequence.is_active:
+            return
+        snapshot = self.sequence.snapshot()
+        error = snapshot.get("error")
+        if error and not self._seq_error_shown:
+            self._seq_error_shown = True
+            self.main.toast("error", error)
+            self.main.log("error", error)
+        if snapshot.get("active"):
+            message = str(snapshot.get("message") or "Sequence running")
+            if message != self._seq_last_message:
+                self._seq_last_message = message
+                detail = (
+                    f"{message} · {int(snapshot.get('scans', 0)):,} scans · "
+                    f"{int(snapshot.get('matches', 0)):,} action(s)"
+                )
+                self.seq_status.setText(detail)
+                if hasattr(self, "hero_sub"):
+                    self.hero_sub.setText(detail)
+            return
+        if self._seq_active_ui and not self.sequence.is_active:
+            self._seq_active_ui = False
+            self._set_sequence_ui(False)
+            self.main.release("image")
+            scans = int(snapshot.get("scans", 0))
+            hits = int(snapshot.get("matches", 0))
+            message = str(snapshot.get("message") or "Sequence finished")
+            self.seq_status.setText(f"{message} · {scans:,} scans · {hits:,} action(s)")
+            if error:
+                self.main.log("error", f"Sequence ended with an error — {error}")
+            else:
+                self.main.log("success", f"Sequence finished — {hits} action(s) from {scans} scan(s).")
+                self.main.toast("success", f"Sequence finished · {hits} action(s)")
+            self._update_summary()
+
     def _tick(self) -> None:
+        self._sequence_tick()
         snapshot = self.engine.snapshot()
         error = snapshot.get("error")
         if error and error != self._last_error:

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 from .. import __app_name__, __version__
 from ..core import i18n, wininput
 from ..core.engine import HotkeyManager
+from ..core.macros import format_clock
 from ..core.hotkeys import (
     ACTION_INFO,
     ACTION_ORDER,
@@ -50,7 +51,9 @@ from ..core.paths import DATA_DIR, MACRO_DIR
 from ..core.presence import PresenceService
 from ..core.settings import SettingsStore
 from .activity import ActivityLog
+from .hud import RunHud
 from .pages.autokey_page import AutoKeyPage
+from .pages.automation_page import AutomationPage
 from .pages.clicker_page import ClickerPage
 from .pages.explore_page import ExplorePage
 from .pages.image_page import ImagePage
@@ -78,6 +81,7 @@ PAGE_ORDER = [
     ("autokey", "Auto-key", "keys", "Auto-key"),
     ("macro", "Macros", "macro", "Macro studio"),
     ("image", "Image targeting", "image", "Image targeting"),
+    ("automation", "Automation", "bolt", "Automation"),
     ("explore", "Explore", "explore", "Explore"),
     ("updates", "Updates", "logs", "Updates & activity"),
     ("settings", "Settings", "settings", "Settings"),
@@ -285,6 +289,9 @@ class MainWindow(QMainWindow):
         self._hotkey_keycaps: dict[str, QLabel] = {}
         self._panic_buttons: list[tuple[QPushButton, str]] = []
         self._page_fade_ready = False
+        self._hud = RunHud()
+        self._hud.stop_requested.connect(self.panic)
+        self._hud.show_requested.connect(self._raise_from_hud)
 
         self._hotkey_suspensions = 0
         self._capture_active = False
@@ -379,6 +386,7 @@ class MainWindow(QMainWindow):
         self.autokey_page = AutoKeyPage(self)
         self.macro_page = MacroPage(self)
         self.image_page = ImagePage(self)
+        self.automation_page = AutomationPage(self)
         self.explore_page = ExplorePage(self)
         self.updates_page = UpdatesPage(self, self.activity)
         self.settings_page = SettingsPage(self)
@@ -388,6 +396,7 @@ class MainWindow(QMainWindow):
             "autokey": self.autokey_page,
             "macro": self.macro_page,
             "image": self.image_page,
+            "automation": self.automation_page,
             "explore": self.explore_page,
             "updates": self.updates_page,
             "settings": self.settings_page,
@@ -489,11 +498,11 @@ class MainWindow(QMainWindow):
         self._nav_group.setExclusive(True)
 
         self._add_nav_group(nav_layout, "group.automation")
-        for key, nav_label, icon, _crumb in PAGE_ORDER[:4]:
+        for key, nav_label, icon, _crumb in PAGE_ORDER[:5]:
             self._add_nav_button(nav_layout, key, nav_label, icon)
         nav_layout.addSpacing(10)
         self._add_nav_group(nav_layout, "group.system")
-        for key, nav_label, icon, _crumb in PAGE_ORDER[4:]:
+        for key, nav_label, icon, _crumb in PAGE_ORDER[5:]:
             self._add_nav_button(nav_layout, key, nav_label, icon)
 
         layout.addWidget(nav)
@@ -905,6 +914,7 @@ class MainWindow(QMainWindow):
         self._shutting_down = True
         self._status_timer.stop()
         self._logo_timer.stop()
+        self._hud.hide()
         self._abort_capture(restore=False)
         self._stop_all_automations()
         try:
@@ -1115,7 +1125,8 @@ class MainWindow(QMainWindow):
             "clicker": bool(self.clicker_page.engine.is_active),
             "autokey": bool(self.autokey_page.engine.is_active),
             "macro": armed or recording or playing,
-            "image": bool(self.image_page.engine.is_active),
+            "image": bool(self.image_page.engine.is_active)
+            or bool(getattr(getattr(self.image_page, "sequence", None), "is_active", False)),
         }
 
     def _update_status(self, force: bool = False) -> None:
@@ -1170,10 +1181,91 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        self._update_hud(text, states, tone)
+
         # Keep the tracked set in sync even if a page stopped itself.
         tracked = {key for key, value in states.items() if value}
         self._active_modes = tracked
         self._set_cinematics_running(not tracked)
+
+    def _update_hud(self, status: str, states: dict[str, bool], tone: str) -> None:
+        if not bool(self.settings.get("show_run_hud", True)):
+            self._hud.hide()
+            return
+        if not any(states.values()):
+            self._hud.hide()
+            return
+        parts: list[str] = []
+        try:
+            if states.get("clicker"):
+                snapshot = self.clicker_page.engine.snapshot()
+                parts.append(
+                    f"CLICK {int(snapshot.get('count', 0)):,} · "
+                    f"{format_clock(float(snapshot.get('elapsed', 0)))}"
+                )
+            if states.get("autokey"):
+                snapshot = self.autokey_page.engine.snapshot()
+                parts.append(
+                    f"KEYS {int(snapshot.get('count', 0)):,} · "
+                    f"{format_clock(float(snapshot.get('elapsed', 0)))}"
+                )
+            if states.get("macro"):
+                if getattr(self.macro_page, "_armed", False):
+                    parts.append("RECORDER ARMED")
+                elif self.macro_page.recorder.is_active:
+                    parts.append(
+                        f"REC {self.macro_page.recorder.event_count():,} events · "
+                        f"{format_clock(self.macro_page.recorder.elapsed())}"
+                    )
+                else:
+                    snapshot = self.macro_page.player.snapshot()
+                    total = snapshot.get("loops_total")
+                    loop = int(snapshot.get("loop", 0))
+                    loop_text = f"loop {max(1, loop)}/∞" if total is None else f"loop {max(1, loop)}/{total}"
+                    parts.append(f"MACRO {loop_text} · {format_clock(float(snapshot.get('elapsed', 0)))}")
+            if states.get("image"):
+                sequence = getattr(self.image_page, "sequence", None)
+                if sequence is not None and sequence.is_active:
+                    snapshot = sequence.snapshot()
+                    parts.append(
+                        f"SEQ {snapshot.get('step_index', 0)}/{snapshot.get('step_total', 0)} · "
+                        f"{snapshot.get('message', '')[:44]}"
+                    )
+                else:
+                    snapshot = self.image_page.engine.snapshot()
+                    parts.append(
+                        f"VISION {int(snapshot.get('scans', 0)):,} scans · "
+                        f"{int(snapshot.get('matches', 0)):,} hits"
+                    )
+        except Exception:
+            parts = []
+        detail = "  ·  ".join(part for part in parts if part) or "F10 stops everything"
+        self._hud.update_state(status, detail[:120], tone)
+        if not self._hud.isVisible():
+            self._hud.present()
+
+    def set_run_hud(self, enabled: bool) -> None:
+        """Persist the compact overlay preference and refresh it immediately."""
+        enabled = bool(enabled)
+        self.settings.set("show_run_hud", enabled)
+        if not enabled:
+            self._hud.hide()
+        else:
+            self._update_status(force=True)
+        self.activity.log(
+            "info", f"Run HUD {'enabled' if enabled else 'disabled'}."
+        )
+
+    def _raise_from_hud(self) -> None:
+        if self.isMinimized():
+            self.showNormal()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def navigate(self, key: str, animate: bool = True) -> None:
+        """Public navigation helper for pages and scheduled runs."""
+        self._navigate(key, animate=animate)
 
     def _pulse_logo(self) -> None:
         self._logo_phase = (self._logo_phase + 0.09) % math.tau

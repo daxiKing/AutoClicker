@@ -1,6 +1,6 @@
 # AutoClicker
 
-**v2.4.0 "Nebula"** — a retro Windows 95/98-style automation console for Windows and Linux.
+**v2.5.0 "Orbit"** — a retro Windows 95/98-style automation console for Windows and Linux.
 Auto clicks, auto keys, macro recording, image-targeted clicking, Discord Rich Presence,
 a Steam storefront explorer and GitHub-powered updates.
 
@@ -17,10 +17,17 @@ a Steam storefront explorer and GitHub-powered updates.
 - **Auto-key** — any virtual key, hold duration, up to 500 presses per second, press or
   duration limits.
 - **Macro studio** — unlimited-duration recording, infinite playback, speed control,
-  JSON import/export and a persistent macro vault.
+  JSON import/export and a persistent macro vault. The **visual timeline editor** trims
+  ranges, reorders events, nudges timestamps by ±10 ms and deletes selections.
 - **Image targeting** — build a library of target images, scan the screen for the best
   match, use exact-color or grayscale matching, test a match without clicking, and stop
   after N clicks. PNG, JPG, WebP, GIF, TIFF, BMP, ICO and SVG are accepted.
+- **Automation** — per-app profiles apply a saved clicker preset when a foreground window
+  title matches, and scheduled runs play a macro at a local time on chosen days.
+- **Conditional image sequences** — chain click, key, wait and stop steps with per-step
+  timeouts and skip / retry / abort miss policies.
+- **Compact run HUD** — a floating always-on-top bar shows live telemetry and stops
+  everything with one button.
 - **Discord Rich Presence** — publishes the live engine state, session timer and a
   GitHub link through Discord's local IPC socket. Toggle it in **Explore → Connections**.
 - **Explore tab** — live Steam Specials, top sellers, new releases and coming-soon rows,
@@ -34,11 +41,13 @@ a Steam storefront explorer and GitHub-powered updates.
 - **Linux support** — a `pynput` X11/Wayland backend, platform-aware settings, a
   `.desktop` entry and GitHub Actions builds for Windows and Linux.
 
+See [docs/roadmap.md](docs/roadmap.md) for shipped, next and exploring milestones.
+
 ## Install
 
 ### Windows
 
-Download `AutoClicker-Setup-2.4.0.exe` from the
+Download `AutoClicker-Setup-2.5.0.exe` from the
 [Releases page](https://github.com/daxiKing/AutoClicker/releases/latest) and run it.
 The installer places the app under `%LOCALAPPDATA%\Programs\AutoClicker`, creates a
 desktop shortcut and keeps settings, macros and images in the portable `data\` folder
@@ -49,7 +58,7 @@ next to the executable.
 Download the Linux tarball from Releases, then:
 
 ```bash
-tar -xzf AutoClicker-2.4.0-linux-x86_64.tar.gz
+tar -xzf AutoClicker-2.5.0-linux-x86_64.tar.gz
 ./AutoClicker/AutoClicker
 ```
 
@@ -86,7 +95,7 @@ python -m PyInstaller --noconfirm --clean --windowed --name AutoClicker `
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" build\AutoClicker.iss
 ```
 
-The installer is written to `build\installer\AutoClicker-Setup-2.4.0.exe`.
+The installer is written to `build\installer\AutoClicker-Setup-2.5.0.exe`.
 
 ### Linux bundle
 
@@ -95,7 +104,7 @@ bash build/build_linux.sh
 ```
 
 The portable folder lands in `build/dist-linux/AutoClicker` and the tarball in
-`build/AutoClicker-2.4.0-linux-x86_64.tar.gz`.
+`build/AutoClicker-2.5.0-linux-x86_64.tar.gz`.
 
 The GitHub Actions workflow in `.github/workflows/build.yml` builds both platforms on
 every push to `main` and on pull requests. Pushing a `v*` tag also publishes the Windows

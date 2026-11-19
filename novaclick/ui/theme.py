@@ -648,6 +648,39 @@ QListWidget::item:selected {{
     border: 1px dotted #000080;
     color: #000000;
 }}
+QTableWidget {{
+    background: #ffffff;
+    alternate-background-color: #f2f2f2;
+    border: 2px solid;
+    border-top-color: #404040;
+    border-left-color: #404040;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+    gridline-color: #d4d0c8;
+    outline: none;
+    selection-background-color: #cce8ff;
+    selection-color: #000000;
+}}
+QTableWidget::item {{
+    padding: 4px 6px;
+    border: none;
+}}
+QTableWidget::item:selected {{
+    background: #cce8ff;
+    color: #000000;
+}}
+QHeaderView::section {{
+    background: #c0c0c0;
+    border: 1px solid;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #404040;
+    border-bottom-color: #404040;
+    color: #000000;
+    padding: 4px 6px;
+    font-size: 10px;
+    font-weight: 700;
+}}
 QTextBrowser, QTextEdit {{
     background: #ffffff;
     border: 2px solid;

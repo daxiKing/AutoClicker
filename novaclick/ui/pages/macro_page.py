@@ -35,6 +35,7 @@ from ...core.macros import (
     macro_summary,
 )
 from ..theme import COLORS
+from ..macro_editor import MacroEditorDialog
 from ..widgets import (
     Card,
     EnergyLine,
@@ -381,12 +382,16 @@ class MacroPage(Page):
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
+        self.edit_btn = make_button("Edit timeline", "GhostButton")
+        self.edit_btn.setToolTip("Trim, reorder, nudge or delete recorded events")
+        self.edit_btn.clicked.connect(self._open_editor)
         self.rename_btn = make_button("Rename", "GhostButton")
         self.rename_btn.clicked.connect(self._rename_macro)
         self.export_btn = make_button("Export", "GhostButton")
         self.export_btn.clicked.connect(self._export_macro)
         self.delete_btn = make_button("Delete", "DangerButton")
         self.delete_btn.clicked.connect(self._delete_macro)
+        actions.addWidget(self.edit_btn)
         actions.addWidget(self.rename_btn)
         actions.addWidget(self.export_btn)
         actions.addStretch(1)
@@ -722,6 +727,29 @@ class MacroPage(Page):
         self.main.toast("success", f"Playing {self._playing_name} · {loop_text} loop(s)")
         self.timeline.set_progress(0.0)
 
+    def macro_choices(self) -> list[tuple[str, str]]:
+        """Return ``(id, name)`` for the schedule editor."""
+        return [(macro["id"], macro.get("name", "Untitled")) for macro in self.store.all()]
+
+    def play_macro_by_id(self, macro_id: str, loops: int | None = 1) -> bool:
+        """Select and play a macro by id — used by scheduled runs."""
+        if self._armed or self._recording or self._playing or self.player.is_active:
+            return False
+        macro = self.store.get(macro_id)
+        if not macro:
+            return False
+        self._selected_id = macro_id
+        self._refresh_list(select_id=macro_id)
+        if loops is None:
+            self.loop_combo.setCurrentIndex(2)
+        elif int(loops) > 1:
+            self.loop_combo.setCurrentIndex(1)
+            self.loop_count.setValue(max(2, int(loops)))
+        else:
+            self.loop_combo.setCurrentIndex(0)
+        self.start_playback()
+        return self._playing
+
     def stop_playback(self, quiet: bool = False) -> None:
         if not self._playing and not self.player.is_active:
             return
@@ -800,6 +828,34 @@ class MacroPage(Page):
     # ------------------------------------------------------------------
     # Library actions
     # ------------------------------------------------------------------
+    def _open_editor(self) -> None:
+        macro = self._selected_macro()
+        if not macro:
+            self.main.toast("warning", "Select a macro to edit first.")
+            return
+        if self._playing or self._recording or self._armed:
+            self.main.toast("warning", "Stop playback or recording before editing.")
+            return
+        dialog = MacroEditorDialog(macro, self)
+        if not dialog.exec():
+            return
+        try:
+            updated = self.store.save(dialog.edited_macro())
+        except Exception as exc:
+            self.main.toast("error", f"Could not save timeline: {exc}")
+            self.main.log("error", f"Macro timeline save failed: {exc}")
+            return
+        self._selected_id = updated["id"]
+        self._refresh_list(select_id=updated["id"])
+        self.main.log(
+            "success",
+            f"Timeline saved for {updated['name']} — {len(updated['events']):,} events, {format_duration(updated['duration'])}.",
+        )
+        self.main.toast(
+            "success",
+            f"Timeline saved · {len(updated['events']):,} events · {format_duration(updated['duration'])}",
+        )
+
     def _rename_macro(self) -> None:
         macro = self._selected_macro()
         if not macro:

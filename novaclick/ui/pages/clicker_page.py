@@ -639,6 +639,27 @@ class ClickerPage(Page):
         data = self.main.settings.get("clicker_presets", {})
         return dict(data) if isinstance(data, dict) else {}
 
+    def preset_names(self) -> list[str]:
+        """Saved clicker preset names, used by app profiles."""
+        return sorted(self._profiles())
+
+    def apply_preset(self, name: str, announce: bool = True) -> bool:
+        """Apply a saved preset by name without user interaction."""
+        profiles = self._profiles()
+        data = profiles.get(str(name or "").strip())
+        if data is None:
+            return False
+        if self.engine.is_active:
+            return False
+        self._apply_profile_data(data)
+        index = self.profile_combo.findText(name)
+        if index >= 0:
+            self.profile_combo.setCurrentIndex(index)
+        if announce:
+            self.main.log("success", f"Loaded preset {name}.")
+            self.main.toast("success", f"Preset {name} loaded.")
+        return True
+
     def _refresh_profile_combo(self, select: str | None = None) -> None:
         if not hasattr(self, "profile_combo"):
             return
@@ -712,12 +733,9 @@ class ClickerPage(Page):
         if not name or name not in profiles:
             self.main.toast("warning", "Select a preset to load first.")
             return
-        if self.engine.is_active:
+        if not self.apply_preset(name):
             self.main.toast("warning", "Stop the click engine before loading a preset.")
             return
-        self._apply_profile_data(profiles[name])
-        self.main.log("success", f"Loaded preset {name}.")
-        self.main.toast("success", f"Preset {name} loaded.")
 
     def _delete_profile(self) -> None:
         name = self.profile_combo.currentText().strip()

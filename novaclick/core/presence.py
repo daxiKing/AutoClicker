@@ -411,7 +411,7 @@ class PresenceService:
     def _activity(self) -> dict[str, Any]:
         return build_activity(
             self._state_text,
-            self.version or "2.4.0",
+            self.version or "2.5.0",
             active=self._active,
             session_start=self._session_start,
         )

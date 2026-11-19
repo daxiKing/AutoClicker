@@ -64,6 +64,7 @@ ENGLISH: dict[str, str] = {
     "nav.autokey": "Auto-key",
     "nav.macro": "Macros",
     "nav.image": "Image targeting",
+    "nav.automation": "Automation",
     "nav.explore": "Explore",
     "nav.updates": "Updates",
     "nav.settings": "Settings",
@@ -1009,6 +1010,56 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status.armed": "錄製器已就緒",
     },
 }
+
+# Later additions are kept in one table so older locale blocks stay untouched.
+# Every key falls back to ENGLISH when a locale has no row here.
+EXTRAS: dict[str, dict[str, str]] = {
+    "es": {"nav.automation": "Automatización"},
+    "fr": {"nav.automation": "Automatisation"},
+    "de": {"nav.automation": "Automatisierung"},
+    "it": {"nav.automation": "Automazione"},
+    "pt": {"nav.automation": "Automação"},
+    "pt-BR": {"nav.automation": "Automação"},
+    "nl": {"nav.automation": "Automatisering"},
+    "pl": {"nav.automation": "Automatyzacja"},
+    "ru": {"nav.automation": "Автоматизация"},
+    "uk": {"nav.automation": "Автоматизація"},
+    "tr": {"nav.automation": "Otomasyon"},
+    "cs": {"nav.automation": "Automatizace"},
+    "sk": {"nav.automation": "Automatizácia"},
+    "hu": {"nav.automation": "Automatizálás"},
+    "ro": {"nav.automation": "Automatizare"},
+    "bg": {"nav.automation": "Автоматизация"},
+    "hr": {"nav.automation": "Automatizacija"},
+    "sr": {"nav.automation": "Аутоматизација"},
+    "sl": {"nav.automation": "Avtomatizacija"},
+    "lt": {"nav.automation": "Automatizavimas"},
+    "lv": {"nav.automation": "Automatizācija"},
+    "et": {"nav.automation": "Automatiseerimine"},
+    "fi": {"nav.automation": "Automaatio"},
+    "sv": {"nav.automation": "Automatisering"},
+    "da": {"nav.automation": "Automatisering"},
+    "nb": {"nav.automation": "Automatisering"},
+    "el": {"nav.automation": "Αυτοματισμός"},
+    "ar": {"nav.automation": "الأتمتة"},
+    "he": {"nav.automation": "אוטומציה"},
+    "hi": {"nav.automation": "स्वचालन"},
+    "bn": {"nav.automation": "স্বয়ংক্রিয়করণ"},
+    "ur": {"nav.automation": "خودکارکاری"},
+    "fa": {"nav.automation": "اتوماسیون"},
+    "th": {"nav.automation": "ระบบอัตโนมัติ"},
+    "vi": {"nav.automation": "Tự động hóa"},
+    "id": {"nav.automation": "Otomatisasi"},
+    "ms": {"nav.automation": "Automasi"},
+    "fil": {"nav.automation": "Awtomasyon"},
+    "ja": {"nav.automation": "自動化"},
+    "ko": {"nav.automation": "자동화"},
+    "zh-CN": {"nav.automation": "自动化"},
+    "zh-TW": {"nav.automation": "自動化"},
+}
+
+for _code, _rows in EXTRAS.items():
+    TRANSLATIONS.setdefault(_code, {}).update(_rows)
 
 _current = "en"
 
